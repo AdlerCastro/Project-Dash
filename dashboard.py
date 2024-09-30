@@ -2,57 +2,132 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-df = pd.read_csv('./data/diabetes_dataset00.csv')
-
-# -------------------- FILTRANDO OS TARGETS -------------------------------
-# Filtrar os três tipos de diabetes 
-df_filtered = df[df['Target'].isin(['Type 1 Diabetes', 'MODY', 'Wolfram Syndrome'])]
-
-# -------------------- VISUALIZAÇÃO -------------------------------
-st.set_page_config(layout="wide")
+# -------------------- VISUALILATION CONFIGS -------------------------------
+st.set_page_config(layout='wide')
 st.title('Análise de Diabetes')
 
-# Divisão de colunas para os gráficos
-col1, col2 = st.columns(2)
-col3, col4 = st.columns(2)
+col1, col2, col3 = st.columns(3)
+col4, col5, col6 = st.columns(3)
 
-# -------------------- GRÁFICO PIZZA CONTAGEM -------------------------------
+# -------------------- FILTERING -------------------------------
 
-# Agrupando dados de 'Target' e contando quantos de cada tipo existem
+df = pd.read_csv('./data/diabetes_dataset00.csv')
+targets = ['Type 1 Diabetes', 'Type 2 Diabetes', 'Prediabetic', 'MODY', 'Wolfram Syndrome']
+selected_columns = ['Target', 'Family History', 'Smoking Status', 'Dietary Habits',
+                    'Alcohol Consumption', 'Physical Activity', 'Age', 'Birth Weight']
+
+df_filtered = df[df['Target'].isin(targets)]
+df_filtered = df_filtered[selected_columns]
+
+#Young ]24], Adult [25,59], Elderly [60[
+age_ranges = [0, 24, 59, float('inf')] 
+categories_age = ['Young', 'Adult', 'Elderly'] 
+
+df_filtered['Age Range'] = pd.cut(df_filtered['Age'], bins=age_ranges, labels=categories_age, right=True)
+
+age_selection = st.sidebar.selectbox('Select the age range:', ['Young', 'Adult', 'Elderly'])
+target_selection = st.sidebar.selectbox('Select the diabetes type:', targets)
+
+filtered_by_age_target = df_filtered[
+    (df_filtered['Age Range'] == age_selection) &
+    (df_filtered['Target'] == target_selection)
+]
+
+# -------------------- TARGETS COUNT -------------------------------
+
 target_counts = df_filtered['Target'].value_counts().reset_index()
-target_counts.columns = ['Tipo', 'Quantidade']
+target_counts.columns = ['Diabete', 'Quantity']
 
-# Gráfico de pizza (coluna 'Tipo' são as fatias e 'Quantidade' o tamanho de cada fatia)
-fig_pie_target_counts = px.pie(target_counts, names='Tipo', values='Quantidade', 
-                               title='Distribuição de Tipos de Diabetes')
+fig_pie_target_counts = px.pie(target_counts, 
+    names="Diabete", 
+    values='Quantity', 
+    title='Distribution by type'
+)
 
-# Exibir os gráficos nas colunas
+# -------------------- AGE RANGE COUNT -------------------------------
+age_range_counts = df_filtered['Age Range'].value_counts().reset_index()
+age_range_counts.columns = ['Age Range','Quantity']
+
+fig_pie_ar_counts = px.pie(age_range_counts,
+    names='Age Range',
+    values='Quantity',
+    title='Distribution by Age Range'
+)
+
+# -------------------- HEALTHY X NO HEALTHY PREDIABETICS ADULTS (NO FAM. HIST) -------------------------------
+
+healthy = filtered_by_age_target[
+    (filtered_by_age_target['Family History']  == 'No') & 
+    (filtered_by_age_target['Smoking Status']  == 'Non-Smoker') &
+    (filtered_by_age_target['Dietary Habits']  == 'Healthy') &
+    (filtered_by_age_target['Alcohol Consumption']  == 'Low') &
+    (filtered_by_age_target['Physical Activity'] == 'High')
+    ].shape[0]
+
+unhealthy = filtered_by_age_target[
+    (filtered_by_age_target['Family History']  == 'No') & 
+    (filtered_by_age_target['Smoking Status']  == 'Smoker') &
+    (filtered_by_age_target['Dietary Habits']  == 'Unhealthy') &
+    (filtered_by_age_target['Alcohol Consumption'].isin(['High', 'Moderate'])) &
+    (filtered_by_age_target['Physical Activity'] == 'Low')
+    ].shape[0]
+
+healthy_unhealthy = pd.DataFrame({
+    'Status': ['Saudáveis','Não Saudáveis'],
+    'Quantity': [healthy, unhealthy]
+})
+
+fig_bar_healthy_unhealthy = px.bar(healthy_unhealthy, 
+x='Status', 
+y='Quantity', 
+title='Healthy x Non-Healthy'
+)
+
+# -------------------- WITH X WITHOUT FAM HIST YOUNGS -------------------------------
+
+histfam = filtered_by_age_target[
+    (filtered_by_age_target['Family History']  == 'Yes') & 
+    (filtered_by_age_target['Smoking Status']  == 'Non-Smoker') &
+    (filtered_by_age_target['Dietary Habits']  == 'Healthy') &
+    (filtered_by_age_target['Alcohol Consumption']  == 'Low') &
+    (filtered_by_age_target['Physical Activity'] == 'High')   
+    ].shape[0]
+
+no_histfam = filtered_by_age_target[
+    (filtered_by_age_target['Family History']  == 'No') & 
+    (filtered_by_age_target['Smoking Status']  == 'Non-Smoker') &
+    (filtered_by_age_target['Dietary Habits']  == 'Healthy') &
+    (filtered_by_age_target['Alcohol Consumption']  == 'Low') &
+    (filtered_by_age_target['Physical Activity'] == 'High')   
+    ].shape[0]
+
+histfam_nohistfam = pd.DataFrame({
+    'Status': ['With','Without'],
+    'Quantity': [histfam, no_histfam]
+})
+
+fig_bar_histfam_nohistfam = px.bar(histfam_nohistfam, 
+x='Status', 
+y='Quantity', 
+title='Healthy With X Without Family History'
+)
+
+# -------------------- FRONTEND -------------------------------
+
 with col1:
-    st.subheader('Contagem por Tipo de Diabetes')
-    st.write("Tabela de Quantidade por Tipo de Diabetes")
-    st.write(target_counts)  # Exibindo a tabela com os dados
-
+    st.subheader('Count by type of diabetes')
+    st.plotly_chart(fig_pie_target_counts, use_container_width=True)
+    
 with col2:
-    st.plotly_chart(fig_pie_target_counts, use_container_width=True)  # Gráfico de pizza
-
-# -------------------- GRÁFICO BARRA FAM HIST -------------------------------
-fig_hf_target = px.bar(df_filtered, x='Target', color='Family History', 
-                       title='Distribuição de Histórico Familiar por Tipo de Diabetes')
+    st.subheader('Count by age range') 
+    st.plotly_chart(fig_pie_ar_counts, use_container_width=True)
 
 with col3:
-    st.subheader('Distribuição de Histórico Familiar por Tipo de Diabetes')
-    st.plotly_chart(fig_hf_target, use_container_width=True)
+    st.subheader("Table with the selected columns:")
+    st.dataframe(df_filtered.head())
 
-# -------------------- GRÁFICO BOXPLOT BIRTH WEIGHT -------------------------------
-fig_bw_target = px.box(df_filtered, x='Target', y='Birth Weight', 
-                       title='Distribuição do Peso ao Nascer por Tipo de Diabetes')
 with col4:
-    st.subheader('Distribuição do Peso ao Nascer por Tipo de Diabetes')
-    st.plotly_chart(fig_bw_target, use_container_width=True)
+    st.plotly_chart(fig_bar_healthy_unhealthy, use_container_width=True)
 
-# -------------------- GRÁFICO BARRA SOC FACTORS -------------------------------
-st.subheader('Distribuição de Fatores Socioeconômicos por Tipo de Diabetes')
-fig_fse_target = px.bar(df_filtered, x='Target', color='Socioeconomic Factors', 
-                        title='Distribuição de Fatores Socioeconômicos por Tipo de Diabetes')
-                        
-st.plotly_chart(fig_fse_target, use_container_width=True)
+with col5:
+    st.plotly_chart(fig_bar_histfam_nohistfam, use_container_width=True)
